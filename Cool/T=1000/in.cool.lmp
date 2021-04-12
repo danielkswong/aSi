@@ -1,0 +1,37 @@
+# 3d amorphous silicon (melt)
+
+variable T_damp equal 100.0
+variable P_damp equal 1000.0
+variable nCool equal 1000000
+variable nThermo equal 1000
+variable nRDF equal 1000
+variable rdfBins equal 100
+variable T_i equal 3000.0
+variable T_f equal 1000
+variable P_i equal 50000.0
+variable P_f equal 50000.0
+
+log log.cool${nCool}.lmp
+
+lattice		diamond 5.43
+region		box block 0 5 0 5 0 5 units lattice
+read_restart restart.equil
+
+pair_style	tersoff
+pair_coeff	* * Si.tersoff Si
+neighbor	2.0 bin
+neigh_modify	every 1 delay 0 check no
+
+dump OVITO all custom 1000 cool_positions_n=${nCool}_T=${T_f}.lammps id type x y z vx vy vz
+
+thermo ${nThermo}
+thermo_style custom step temp epair emol etotal press vol
+
+comm_modify cutoff 20
+compute RDF all rdf ${rdfBins} cutoff 10
+variable volume equal vol
+fix 1 all ave/time ${nThermo} 1 ${nThermo} c_thermo_pe c_thermo_press c_thermo_temp v_volume file cool_thermo_n=${nCool}_T=${T_f}.txt
+fix 2 all ave/time ${nRDF} 1 ${nRDF} c_RDF[*] file cool_rdf_n=${nCool}_T=${T_f}.txt mode vector
+fix cool all nvt temp ${T_i} ${T_f} ${T_damp}
+run ${nCool}
+write_restart restart_n=${nCool}_T=${T_f}.cool
