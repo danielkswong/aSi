@@ -1,4 +1,4 @@
-# 3d amorphous silicon (melt)
+# 3d amorphous silicon (cool)
 
 variable T_damp equal 100.0
 variable P_damp equal 1000.0
