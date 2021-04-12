@@ -1,0 +1,46 @@
+# 3d amorphous silicon (equilibriate)
+
+variable T_damp equal 100.0
+variable P_damp equal 1000.0
+variable nEquilibriate equal 1000000
+variable nRDF equal 1000
+variable nMSD equal 1000
+variable nThermo equal 1000
+variable rdfBins equal 100
+variable T_i equal 3000.0
+
+log log.equil.lmp
+
+units		real
+atom_style	atomic
+
+lattice		diamond 5.4655
+region		box block 0 5 0 5 0 5 units lattice
+create_box	1 box
+create_atoms	1 box
+mass		1 28.0855
+
+velocity	all create ${T_i} 87287
+
+pair_style	tersoff
+pair_coeff	* * Si.tersoff Si
+
+neighbor	2.0 bin
+neigh_modify	every 1 delay 0 check no
+
+dump OVITO all custom 1000 equil_positions_n=${nEquilibriate}.txt id type x y z vx vy vz
+
+thermo ${nThermo}
+thermo_style custom step temp epair emol etotal press vol
+
+comm_modify cutoff 20
+compute RDF all rdf ${rdfBins} cutoff 10
+compute MSD all msd
+variable volume equal vol
+fix 1 all ave/time ${nThermo} 1 ${nThermo} c_thermo_pe c_thermo_press c_thermo_temp v_volume file equil_thermo_n=${nEquilibriate}.txt
+fix 2 all ave/time ${nRDF} 1 ${nRDF} c_RDF[*] file equilibriate_rdf_n=${nEquilibriate}.txt mode vector
+fix 3 all ave/time ${nMSD} 1 ${nMSD} c_MSD[*] file equilibriate_msd_n=${nEquilibriate}.txt
+fix equilibriate all nvt temp ${T_i} ${T_i} ${T_damp}
+run ${nEquilibriate}
+
+write_restart restart.equil
