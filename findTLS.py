@@ -11,16 +11,18 @@ from matplotlib.colors import Normalize
 import math
 
 # Flags
-plotFlag=1
-writeFlag=1
-checkFlag=1
+plotFlag=0
+writeFlag=0
+checkFlag=0
 
 # Relevant parameters
-T=600
+T=700
 nAtoms=1000
-nDump=50
-maxIter=6000
+nDump=10
+nPartitions=50
+maxIter=20000
 conversion_factor=(1./nAtoms)*(1./6.022e23)*(4184.)*(1/1.602e-19)
+minStyle="quickmin"
 
 # Read in quench position files
 quenchFiles=[]
@@ -37,6 +39,7 @@ nFiles=len(quenchFiles)
 files=np.empty(nFiles,dtype=object)
 for i in range(nFiles):
     file=quenchFiles[i].replace("i=","")
+    file=file.replace(".lammps","")
     fileName=file.split("_")
     index=int(fileName[3])
     files[index]=quenchFiles[i]
@@ -59,34 +62,13 @@ for i in range(nFiles):
 positionArray=np.asarray(positionArray,dtype=np.float64)
 
 # Read in quench energies
-energyFile=open("quench_energies_T=600.txt")
+energyFile=open("quench_energies_T="+str(T)+".txt")
 energyArray=[]
 for line in energyFile:
     energyArray.append(float(line))
 energyArray=np.array(energyArray)
 energyArray=energyArray*conversion_factor
-
-# Read in barriers and stopping iteration
-barriers=[]
-iterations=[]
-file=open('barrier.lammps','r')
-for i in range(4):
-    file.readline()
-previousTwoLine=[]
-previousLine=[]
-for currentLine in file:
-    stringArray=currentLine.strip()
-    stringArray=stringArray.split()
-    if stringArray[0]=='0':
-        barriers.append(float(previousTwoLine[6]))
-        iterations.append(float(previousTwoLine[0]))
-    previousTwoLine=previousLine
-    previousLine=stringArray
-barriers.append(float(previousLine[6]))
-barriers=np.asarray(barriers)
-barriers=barriers*conversion_factor
-iterations.append(float(previousLine[0]))
-iterations=np.asarray(iterations)
+energyFile.close()
 
 # Process data
 
@@ -111,13 +93,63 @@ PR=np.sum(consDisp[:,:,5]**2+consDisp[:,:,6]**2+consDisp[:,:,7]**2,1)**2/np.sum(
 energyAsym=energyArray[1:]-energyArray[0:-1]
 
 
+# Distance criteria
+# Damart and Rodney
+critD=1
+dispD=avgConsDisp*nAtoms
+percentD=float(len(dispD[dispD>critD]))/len(energyAsym)
+indD=np.argwhere(dispD>critD).flatten()
+# Cheng
+critC=0.01
+dispC=np.sum(np.sqrt(netConsDisp2),axis=1)/nAtoms
+percentC=float(len(dispC[dispC>critC]))/len(energyAsym)
+indC=np.argwhere(dispC>critC).flatten()
+
+indCrit=sorted(set(indC).intersection(indD))
+
+# Read in barriers and stopping iteration
+barriers=[]
+iterations=[]
+replicas=np.zeros((len(indCrit),nPartitions))
+file=open('barrier_'+minStyle+'_'+str(nPartitions)+'x1.lammps','r')
+lineNumber=0
+for i in range(4):
+    lineNumber+=1
+    file.readline()
+previousTwoLine=[]
+previousLine=[]
+index=0
+j=0
+for currentLine in file:
+    lineNumber+=1
+    stringArray=currentLine.strip()
+    stringArray=stringArray.split()
+    if stringArray[0]=='0':
+        barriers.append(float(previousTwoLine[6]))
+        if checkFlag and barriers[-1]*conversion_factor>0.05:
+            print(lineNumber-403)
+            print(barriers[-1])
+        iterations.append(float(previousTwoLine[0]))
+        if any(i==index for i in indCrit):
+            replicas[j]=np.asarray(previousTwoLine[10::2],dtype=np.float64)
+            j+=1
+        index+=1
+    previousTwoLine=previousLine
+    previousLine=stringArray
+file.close()
+barriers.append(float(previousLine[6]))
+barriers=np.asarray(barriers)
+barriers=barriers*conversion_factor
+iterations.append(float(previousLine[0]))
+iterations=np.asarray(iterations)
+
 # Threshold for top ten most displaced positions
 thresh=np.sort(avgConsDisp)[-10]
 # Array containing dump number for TLS
 consTLSArray=np.where(avgConsDisp>=thresh)[0]
 # Indices of events past the distance criterion
 hist_fit=np.histogram(avgConsDisp2,bins="auto",normed=False)
-d0_2=np.min(argrelextrema(hist_fit[0],np.less))
+d0_2=np.min(argrelextrema(hist_fit[0],np.less_equal))
 d0_2=(hist_fit[1][d0_2]+hist_fit[1][d0_2+1])/2
 ind_c=np.where(avgConsDisp2>d0_2)[0]
 ind_nc=np.where(avgConsDisp2<=d0_2)[0]
@@ -189,7 +221,7 @@ if plotFlag:
     plt.savefig("avg_cons_disp2_PDF_T="+str(T)+".png")
     plt.clf()
 
-if 1:
+if plotFlag:
     plt.hist(maxConsDisp[ind_c],bins="auto",normed=False)
     plt.title("Max Displacement From Previous Position PDF, T = " + str(T))
     plt.xlabel("Max displacement from previous position d_max (angstrom)")
@@ -264,7 +296,7 @@ if plotFlag:
     plt.xlim((0,len(barriers)))
     plt.ylim((0,max(barriers)))
     plt.title("Energy Barrier over Time, T = " +str(T))
-    plt.savefig("energy_barrier_plot_T="+str(T)+".png")
+    plt.savefig("energy_barrier_plot_T="+str(T)+"_"+minStyle+"_"+str(nPartitions)+"x1.png")
     plt.clf()
 
     plt.hist(barriers,bins=40,normed=False,log=False)
@@ -272,7 +304,7 @@ if plotFlag:
     plt.xlabel("Energy Barrier V (eV)")
     plt.ylabel("P(V)")
     plt.xlim((0,max(barriers)))
-    plt.savefig("energy_barrier_PDF_T="+str(T)+".png")
+    plt.savefig("energy_barrier_PDF_T="+str(T)+"_"+minStyle+"_"+str(nPartitions)+"x1.png")
     plt.clf()
 
 if plotFlag:
@@ -294,15 +326,15 @@ if plotFlag:
     plt.title("Energy Barriers (Non-Zero Energy Barrier) PDF, T = " + str(T))
     plt.xlabel("Energy Barriers V (eV)")
     plt.ylabel("P(V)")
-    plt.savefig("energy_barriers_nzeb_PDF_T="+str(T)+".png")
+    plt.savefig("energy_barriers_nzeb_PDF_T="+str(T)+"_"+minStyle+"_"+str(nPartitions)+"x1.png")
     plt.clf()
 
-if 1:
+if plotFlag:
     plt.plot(barriers,abs(energyAsym),'o')
     plt.title("Energy Barrier vs Energy Asymmetry, T = " + str(T))
     plt.xlabel("Energy Barrier V (eV)")
     plt.ylabel("Energy Asymmetry delta V (eV)")
-    plt.savefig("energy_barrier_asym_plot_T="+str(T)+".png")
+    plt.savefig("energy_barrier_asym_plot_T="+str(T)+"_"+minStyle+"_"+str(nPartitions)+"x1.png")
     plt.clf()
 
 # Check if barriers are satisfying force criterion
@@ -314,7 +346,7 @@ if checkFlag:
     plt.title("Force Criterion Check for Energy Barriers")
     plt.xlabel("Stopping Iteration Number")
     plt.ylabel("Energy Barrier V (eV)")
-    plt.savefig("criterion_check.png")
+    plt.savefig("criterion_check_"+minStyle+"_"+str(nPartitions)+"x1.png")
     plt.clf()
 
 # Plot TLS displacements in real space
@@ -339,4 +371,4 @@ if writeFlag:
     np.savetxt('avgConsDisp2_Dump='+str(nDump)+'.csv',avgConsDisp2,delimiter=',')
     np.savetxt('PR_Dump='+str(nDump)+'.csv',PR,delimiter=',')
     np.savetxt('energy_Dump='+str(nDump)+'.csv',energyAsym,delimiter=',')
-    np.savetxt('energyBarrier_Dump='+str(nDump)+'.csv',barriers,delimiter=',')
+    np.savetxt('energyBarrier_'+minStyle+'_'+str(nPartitions)+'x1_Dump='+str(nDump)+'.csv',barriers,delimiter=',')
