@@ -1,0 +1,53 @@
+# 3d amorphous silicon (post-equilibrate)
+# T_i = 0.001
+# nPostEquil = 1000000
+
+log log.postequil.lmp
+
+dimension 3
+units metal
+boundary p p p
+atom_style atomic
+atom_modify map array sort 0 0.0
+
+lattice diamond 5.465517665
+region box block 0 5 0 5 0 5 units lattice
+
+read_restart restart.cool
+
+variable T_i equal 0.001
+variable T_damp equal $(100.0*dt)
+variable nPostEquil equal 1000000
+variable nCool equal 3500000
+variable nRDF equal 1000
+variable nMSD equal 1000
+variable nThermo equal 1000
+variable rdfBins equal 100
+
+pair_style sw
+pair_coeff * * Si.sw Si
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check no
+
+dump data all custom 1000 postequil_pos.lammps id type x y z vx vy vz
+
+thermo ${nThermo}
+thermo_style custom step temp epair emol pe ke etotal press vol
+
+comm_modify cutoff 20
+compute RDF all rdf ${rdfBins} cutoff 10
+compute MSD all msd
+variable volume equal vol
+fix 1 all ave/time ${nThermo} 1 ${nThermo} c_thermo_temp c_thermo_pe c_thermo_press v_volume file postequil_thermo.txt
+fix 2 all ave/time ${nRDF} 1 ${nRDF} c_RDF[*] file postequil_rdf.txt mode vector
+fix 3 all ave/time ${nMSD} 1 ${nMSD} c_MSD[*] file postequil_msd.txt
+fix equil all nvt temp ${T_i} ${T_i} ${T_damp}
+run ${nPostEquil}
+
+unfix 1
+unfix 2
+unfix 3
+unfix equil
+
+write_restart restart.postequil

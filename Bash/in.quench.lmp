@@ -1,0 +1,68 @@
+# 3d amorphous siicon (quench)
+# nPreEquil = 1000000
+# nCool = 3500000
+# nPostEquil = 1000000
+# T_search = 600
+# seed = 1
+# cutoff = 2.75
+
+log log.quench.lmp
+
+dimension 3
+units metal
+boundary p p p
+atom_style atomic
+atom_modify map array sort 0 0.0
+
+lattice diamond 5.465517665
+region box block 0 5 0 5 0 5 units lattice
+
+read_restart restart.postequil
+
+variable nPreEquil equal 1000000
+variable nCool equal 3500000
+variable nPostEquil equal 1000000
+variable nSearch equal 10
+variable nQuench equal 10000
+variable nThermo equal 50
+variable T_search equal 600
+variable T_damp equal $(100.0*dt)
+variable E_tol equal 0.0
+variable F_tol equal 1.0e-6
+
+velocity all create ${T_search} 1
+
+pair_style sw
+pair_coeff * * Si.sw Si
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check no
+
+compute coord all coord/atom cutoff 2.75
+variable coord1 equal c_coord[1]
+
+thermo ${nThermo}
+thermo_style custom step temp epair emol etotal press pe v_coord1
+
+write_dump all custom temp.pos id type xu yu zu vx vy vz
+minimize ${E_tol} ${F_tol} ${nQuench} ${nQuench}
+write_dump all custom quench_coord.lammps id type c_coord modify sort id
+write_dump all custom quench_pos.lammps id type x y z xu yu zu modify sort id
+print $(pe) file quench_energies.lammps
+
+fix search all nvt temp ${T_search} ${T_search} ${T_damp}
+label loop_i
+variable i loop 2000
+	variable current_time equal ${nPreEquil}+${nCool}+${nPostEquil}+($i-1)*${nSearch}
+	read_dump temp.pos ${current_time} x y z vx vy vz wrapped no
+	run ${nSearch}
+	write_dump all custom temp.pos id type xu yu zu vx vy vz
+
+	minimize ${E_tol} ${F_tol} ${nQuench} ${nQuench}
+	write_dump all custom quench_coord.lammps id type c_coord modify sort id append yes
+	write_dump all custom quench_pos.lammps id type x y z xu yu zu modify sort id append yes
+	print $(pe) append quench_energies.lammps
+next i
+jump SELF loop_i
+
+unfix search

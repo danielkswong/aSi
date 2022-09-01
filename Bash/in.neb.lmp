@@ -1,0 +1,48 @@
+# 3d amorphous silicon (NEB)
+# N1 = 100000
+# N2 = 100000
+# nPartitions = 50
+
+log log.neb.lmp
+
+dimension 3
+units metal
+boundary p p p
+atom_style atomic
+atom_modify map array sort 0 0.0
+
+lattice diamond 5.465517665
+region box block 0 5 0 5 0 5 units lattice
+
+create_box 1 box
+create_atoms 1 box
+mass 1 28.0855
+
+variable nThermo equal 1000
+variable N1 equal 100000
+variable N2 equal 100000
+variable Nevery equal 50
+variable nPartitions equal 50
+variable E_tol equal 0.0
+variable F_tol equal 1.0e-6
+
+velocity all create 600 1
+
+pair_style sw
+pair_coeff * * Si.sw Si
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check no
+
+thermo ${nThermo}
+
+fix 1 all neb 1.0
+partition yes 1 fix 2 all setforce 0.0 0.0 0.0
+partition yes ${nPartitions} fix 2 all setforce 0.0 0.0 0.0
+min_style quickmin
+
+variable u uloop ${nPartitions}
+
+dump replicas all custom 1000 dump.neb.$u id type x y z xu yu zu
+read_dump pre.lammps 0 x y z wrapped no
+neb ${E_tol} ${F_tol} ${N1} ${N2} ${Nevery} final post.lammps

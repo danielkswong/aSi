@@ -1,0 +1,50 @@
+# 3d amorphous silicon (cool)
+# T_i = 3500
+# T_f = 0.001
+# n = 35000000
+
+variable T_i equal 3500
+variable T_f equal 0.001
+variable T_damp equal 0.1
+variable nCool equal 35000000
+variable nRDF equal 1000
+variable nThermo equal 1000
+variable rdfBins equal 100
+
+log log.cool.lmp
+
+dimension 3
+units metal
+boundary p p p
+atom_style atomic
+atom_modify map array sort 0 0.0
+
+lattice diamond 5.465517665
+region box block 0 5 0 5 0 5 units lattice
+
+read_restart restart.preequil
+
+pair_style tersoff
+pair_coeff * * Si.tersoff Si
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check no
+
+dump data all custom 1000 cool_pos.lammps id type x y z vx vy vz
+
+thermo ${nThermo}
+thermo_style custom step temp epair emol pe ke etotal press vol
+
+comm_modify cutoff 20
+compute RDF all rdf ${rdfBins} cutoff 10
+variable volume equal vol
+fix 1 all ave/time ${nThermo} 1 ${nThermo} c_thermo_temp c_thermo_pe c_thermo_press v_volume file cool_thermo.txt
+fix 2 all ave/time ${nRDF} 1 ${nRDF} c_RDF[*] file cool_rdf.txt mode vector
+fix cool all nvt temp ${T_i} ${T_f} ${T_damp}
+run ${nCool}
+
+unfix 1
+unfix 2
+unfix cool
+
+write_restart restart.cool

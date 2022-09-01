@@ -1,0 +1,56 @@
+# 3d amorphous silicon (pre-equilibrate)
+# T_i = 3500
+# nPreEquil = 1000000
+# seed = 1
+
+variable T_i equal 3500
+variable T_damp equal 0.1
+variable nPreEquil equal 1000000
+variable nRDF equal 1000
+variable nMSD equal 1000
+variable nThermo equal 1000
+variable rdfBins equal 100
+
+log log.preequil.lmp
+
+dimension 3
+units metal
+boundary p p p
+atom_style atomic
+atom_modify map array sort 0 0.0
+
+lattice diamond 5.465517665
+region box block 0 5 0 5 0 5 units lattice
+create_box 1 box
+create_atoms 1 box
+mass 1 28.0855
+
+velocity all create ${T_i} 1
+
+pair_style tersoff
+pair_coeff * * Si.tersoff Si
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check no
+
+dump data all custom 1000 preequil_pos.lammps id type x y z vx vy vz
+
+thermo ${nThermo}
+thermo_style custom step temp epair emol pe ke etotal press vol
+
+comm_modify cutoff 20
+compute RDF all rdf ${rdfBins} cutoff 10
+compute MSD all msd
+variable volume equal vol
+fix 1 all ave/time ${nThermo} 1 ${nThermo} c_thermo_temp c_thermo_pe c_thermo_press v_volume file preequil_thermo.txt
+fix 2 all ave/time ${nRDF} 1 ${nRDF} c_RDF[*] file preequil_rdf.txt mode vector
+fix 3 all ave/time ${nMSD} 1 ${nMSD} c_MSD[*] file preequil_msd.txt
+fix equil all nvt temp ${T_i} ${T_i} ${T_damp}
+run ${nPreEquil}
+
+unfix 1
+unfix 2
+unfix 3
+unfix equil
+
+write_restart restart.preequil
