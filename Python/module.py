@@ -21,8 +21,8 @@ def readCSV(file):
     """
     
     with open(file,'r') as csvfile:
-        csvreader=csv.reader(file)
-        data=np.asarray(list(csvreader))
+        csvreader=csv.reader(csvfile)
+        data=np.asarray(list(csvreader),dtype=float)
     return data
 
 def readLAMMPS_quench(file,nQuenches,nAtoms,lineSkip=9):
@@ -303,7 +303,7 @@ def findNearestNeighbours(pos,cutoff,boxLength):
         disp=np.linalg.norm(extendedPos-atomPos,axis=1)
         nnInd=np.mod(np.argwhere(disp<cutoff),nAtoms)
         nnInd=nnInd[nnInd!=i]
-        nn[i]=nnInd
+        nn[i]=np.sort(nnInd)
     return nn
 
 def findCoordination(pos,cutoff,boxLength):
@@ -463,9 +463,9 @@ def unwrapDisplacements(disp,cutoff,boxLength):
 
     """
 
-    dx=disp[0]
-    dy=disp[1]
-    dz=disp[2]
+    dx=disp[:,0]
+    dy=disp[:,1]
+    dz=disp[:,2]
 
     dx=dx-(dx>cutoff)*boxLength+(dx<-cutoff)*boxLength
     dy=dy-(dy>cutoff)*boxLength+(dy<-cutoff)*boxLength
@@ -600,6 +600,23 @@ def calc_theta(pos1,pos2,bonds,cutoff,boxLength):
     cosArray=(dx1*dx2+dy1*dy2+dz1*dz2)/np.sqrt(dx1**2+dy1**2+dz1**2)/np.sqrt(dx2**2+dy2**2+dz2**2)
     theta=np.arccos(np.clip(cosArray,-1.0,1.0))/pi*180
     return theta
+
+def calcZScore(array):
+    """Calculates the Z score for each entry in the array
+
+    Parameters
+    ----------
+    array : numpy float array (n x 1)
+        Numpy array of n floats
+
+    Returns
+    -------
+    Zscore : numpy float array (n x 1)
+        Numpy array of Z scores
+
+    """
+
+    return (array-np.mean(array))/(np.std(array))
 
 def checkSlurmFiles(jobID,jobType='cool',lenThresh=100):
     """Checks for unsuccessful Slurm jobs during batch run
